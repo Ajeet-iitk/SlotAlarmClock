@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Chrome case -->
+    <path
+        android:pathData="M26,54 a28,28 0 1,0 56,0 a28,28 0 1,0 -56,0"
+        android:strokeWidth="9">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="54"
+                android:startY="24"
+                android:endX="54"
+                android:endY="84"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF2A2F36" />
+                <item android:offset="0.14" android:color="#FFEDF1F6" />
+                <item android:offset="0.34" android:color="#FF6C747F" />
+                <item android:offset="0.5" android:color="#FF3A4048" />
+                <item android:offset="0.68" android:color="#FFB7BFC9" />
+                <item android:offset="0.86" android:color="#FFF4F8FC" />
+                <item android:offset="1.0" android:color="#FF20242A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Dark reel housing -->
+    <path
+        android:pathData="M34,54 a20,20 0 1,0 40,0 a20,20 0 1,0 -40,0"
+        android:fillColor="#FF0D1014" />
+
+    <!-- Two spinning reels -->
+    <path
+        android:pathData="M47,43 L47,65"
+        android:strokeColor="#FFD7DDE5"
+        android:strokeLineCap="round"
+        android:strokeWidth="6" />
+    <path
+        android:pathData="M61,43 L61,65"
+        android:strokeColor="#FF9AA3AE"
+        android:strokeLineCap="round"
+        android:strokeWidth="6" />
+</vector>

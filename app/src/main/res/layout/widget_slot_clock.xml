@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The widget is two bitmaps: the clock plate and the alarm switch.
+  Splitting them lets each one own its own tap target, which a single
+  flattened bitmap could not do.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/widget_plate"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/widget_description"
+        android:scaleType="fitXY" />
+
+    <ImageView
+        android:id="@+id/widget_switch"
+        android:layout_width="128dp"
+        android:layout_height="44dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="10dp"
+        android:contentDescription="@string/cd_alarm_switch"
+        android:scaleType="fitXY" />
+
+</FrameLayout>

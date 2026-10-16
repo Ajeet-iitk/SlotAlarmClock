@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="metal_backdrop">#FF0C0E12</color>
+    <color name="metal_backdrop_high">#FF171B21</color>
+    <color name="metal_accent">#FFFFB74D</color>
+    <color name="ic_launcher_background">#FF14181E</color>
+</resources>

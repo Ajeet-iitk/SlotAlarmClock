@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Slot Alarm</string>
+    <string name="widget_label">Slot Alarm Clock</string>
+    <string name="widget_description">A metal slot-machine clock with a rolling 24-hour readout and an alarm switch.</string>
+
+    <string name="cd_alarm_switch">Turn the alarm on or off</string>
+    <string name="cd_alarm_time">Alarm time, tap to change</string>
+    <string name="cd_reel">Rolling digit dial</string>
+
+    <string name="alarm_set_title">Set alarm</string>
+    <string name="action_done">Set</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_snooze">Snooze 5 min</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="status_on">ON</string>
+    <string name="status_off">OFF</string>
+    <string name="hint_drag_dials">Drag the dials to spin them</string>
+    <string name="alarm_ringing_title">Wake up</string>
+
+    <string name="notif_channel_ringing">Alarm ringing</string>
+    <string name="notif_channel_ringing_desc">Shown while an alarm is sounding.</string>
+    <string name="notif_ringing_title">Alarm</string>
+</resources>

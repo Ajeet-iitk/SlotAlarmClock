@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A lightweight stand-in so the widget picker shows something recognisable.
+     The real preview is the live bitmap the widget draws itself. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="320dp"
+    android:height="150dp"
+    android:viewportWidth="320"
+    android:viewportHeight="150">
+
+    <path android:pathData="M8,8h304v134h-304z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="8"
+                android:startY="8"
+                android:endX="312"
+                android:endY="142"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF2C323A" />
+                <item android:offset="0.48" android:color="#FF171B21" />
+                <item android:offset="1.0" android:color="#FF0A0C0F" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <path android:pathData="M36,32h60v58h-60z" android:fillColor="#FF0C0F13" />
+    <path android:pathData="M104,32h60v58h-60z" android:fillColor="#FF0C0F13" />
+    <path android:pathData="M188,32h60v58h-60z" android:fillColor="#FF0C0F13" />
+    <path android:pathData="M256,32h42v58h-42z" android:fillColor="#FF0C0F13" />
+
+    <path android:pathData="M36,46h60v18h-60z" android:fillColor="#FFBBC3CD" />
+    <path android:pathData="M104,46h60v18h-60z" android:fillColor="#FFBBC3CD" />
+    <path android:pathData="M188,46h60v18h-60z" android:fillColor="#FFBBC3CD" />
+    <path android:pathData="M256,46h42v18h-42z" android:fillColor="#FFBBC3CD" />
+
+    <path android:pathData="M100,104h120v34h-120z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="100"
+                android:startY="104"
+                android:endX="220"
+                android:endY="138"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF3A414A" />
+                <item android:offset="0.5" android:color="#FF161A1F" />
+                <item android:offset="1.0" android:color="#FF3A414A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M106,110h50v22h-50z" android:fillColor="#FFE6EBF2" />
+</vector>

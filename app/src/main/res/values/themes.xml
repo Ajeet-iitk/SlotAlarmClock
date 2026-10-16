@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- The app is fully edge-to-edge Compose, so the platform theme only needs to
+         supply a dark, chrome-free window background. -->
+    <style name="Theme.SlotAlarmClock" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/metal_backdrop</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <!-- Shown over the lock screen when an alarm fires. -->
+    <style name="Theme.SlotAlarmClock.Ringing" parent="Theme.SlotAlarmClock">
+        <item name="android:windowBackground">@color/metal_backdrop</item>
+        <item name="android:windowShowWallpaper">false</item>
+    </style>
+
+</resources>
