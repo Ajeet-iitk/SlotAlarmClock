@@ -15,6 +15,7 @@ import com.ajeet.slotalarmclock.ui.ReelSpec
 import com.ajeet.slotalarmclock.ui.drawMetalSwitch
 import com.ajeet.slotalarmclock.ui.drawReelStrip
 import com.ajeet.slotalarmclock.ui.metal.Metal
+import java.util.Locale
 import kotlin.math.sqrt
 
 /**
@@ -28,14 +29,19 @@ import kotlin.math.sqrt
 object WidgetRenderer {
 
     /**
-     * Cap on total pixels per bitmap.
+     * Pixel budgets for the bitmaps that get pushed into a RemoteViews.
      *
-     * RemoteViews travel over Binder, whose transaction buffer is about 1 MB for the whole
-     * call. A full-resolution bitmap for a large widget blows straight through it and throws
-     * TransactionTooLargeException, so the render is scaled down to fit a fixed budget. The
-     * artwork is smooth gradient and text, which upscales far better than it downsizes badly.
+     * The bitmap is not drawn on-screen by this process: it is packed into a Parcel and sent
+     * across Binder to the launcher. That buffer is small (about 1 MB for the whole
+     * transaction), and when a payload exceeds it the failure is invisible from the user's
+     * side — the update is simply dropped and the widget sits there blank, which is exactly the
+     * bug these budgets exist to prevent. They are deliberately well under the ceiling rather
+     * than near it. The artwork is smooth gradient and text, which upscales far better than a
+     * photograph, so a modest bitmap still looks right at full widget size.
      */
-    private const val MAX_PIXELS = 120_000
+    private const val MAX_PLATE_PIXELS = 60_000
+    private const val MAX_SWITCH_PIXELS = 24_000
+    private const val MAX_PLAIN_PIXELS = 12_000
 
     /** Renders the plate: case, reels and status line. Archived as a still frame of the clock. */
     fun renderPlate(
@@ -46,7 +52,7 @@ object WidgetRenderer {
         minute: Int,
         alarm: AlarmState,
     ): Bitmap {
-        val (w, h) = fit(widthPx, heightPx)
+        val (w, h) = fit(widthPx, heightPx, MAX_PLATE_PIXELS)
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val density = context.resources.displayMetrics.density
@@ -90,8 +96,7 @@ object WidgetRenderer {
 
     /** Renders the alarm switch on its own so the widget can give it a separate tap target. */
     fun renderSwitch(context: Context, widthPx: Int, heightPx: Int, enabled: Boolean): Bitmap {
-        val w = widthPx.coerceAtLeast(1)
-        val h = heightPx.coerceAtLeast(1)
+        val (w, h) = fit(widthPx, heightPx, MAX_SWITCH_PIXELS)
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val density = context.resources.displayMetrics.density
@@ -105,6 +110,35 @@ object WidgetRenderer {
             bloom = if (enabled) 1f else 0f,
             sweep = 0.42f,
         )
+        return bitmap
+    }
+
+    /**
+     * A deliberately plain face: a dark rounded panel with the time as flat text.
+     *
+     * Used only when the full material render throws. It exists so that a renderer fault
+     * degrades into "the widget still tells you the time" rather than "the widget is a blank
+     * box", and it doubles as a diagnostic — if this is what shows up, the bitmaps *are*
+     * reaching the launcher and the fault is inside the material renderer.
+     */
+    fun renderPlain(context: Context, widthPx: Int, heightPx: Int, hour: Int, minute: Int): Bitmap {
+        val (w, h) = fit(widthPx, heightPx, MAX_PLAIN_PIXELS)
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val density = context.resources.displayMetrics.density
+
+        val background = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF14181E.toInt() }
+        val radius = 18f * density
+        canvas.drawRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), radius, radius, background)
+
+        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Metal.AMBER
+            textSize = h * 0.36f
+            textAlign = Paint.Align.CENTER
+            typeface = Metal.digitTypeface
+        }
+        val label = String.format(Locale.US, "%02d:%02d", hour, minute)
+        canvas.drawText(label, w / 2f, Metal.centredBaseline(text, h / 2f), text)
         return bitmap
     }
 
@@ -190,13 +224,13 @@ object WidgetRenderer {
         )
     }
 
-    /** Scales a requested size down until it fits the Binder budget. */
-    private fun fit(widthPx: Int, heightPx: Int): Pair<Int, Int> {
+    /** Scales a requested size down until it fits [maxPixels]. */
+    private fun fit(widthPx: Int, heightPx: Int, maxPixels: Int): Pair<Int, Int> {
         val w = widthPx.coerceIn(64, 1600)
         val h = heightPx.coerceIn(64, 1000)
         val pixels = w.toLong() * h.toLong()
-        if (pixels <= MAX_PIXELS) return w to h
-        val scale = sqrt(MAX_PIXELS.toDouble() / pixels.toDouble())
+        if (pixels <= maxPixels) return w to h
+        val scale = sqrt(maxPixels.toDouble() / pixels.toDouble())
         return (w * scale).toInt().coerceAtLeast(64) to (h * scale).toInt().coerceAtLeast(48)
     }
 }

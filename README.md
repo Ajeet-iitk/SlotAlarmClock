@@ -180,9 +180,12 @@ same `Metal` and the exact same `drawReelStrip` the app uses.
 * `RTC` rather than `RTC_WAKEUP`: a widget is only visible when the device is already awake, so
   waking the screen every minute would be pure battery waste. It also re-renders on resize, on a
   time change, and on a timezone change.
-* Bitmaps are capped at 120,000 pixels. `RemoteViews` travel over Binder, whose transaction
-  buffer is about 1 MB shared across the whole call; a full-resolution bitmap for a large widget
-  blows straight through it and throws `TransactionTooLargeException`.
+* Bitmaps are capped at 60,000 pixels for the plate and 24,000 for the switch. `RemoteViews`
+  travel over Binder, whose transaction buffer is about 1 MB shared across the whole call; a
+  full-resolution bitmap for a large widget blows straight through it, and when it does the
+  update is silently dropped and the widget sits there blank. The budgets are kept well under
+  the ceiling rather than near it, and a render fault degrades to a plain time readout instead of
+  an empty frame.
 
 ## Permissions, and why each one is there
 

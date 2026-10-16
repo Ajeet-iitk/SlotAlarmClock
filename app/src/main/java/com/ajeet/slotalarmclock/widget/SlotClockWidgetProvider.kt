@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.RemoteViews
 import com.ajeet.slotalarmclock.MainActivity
 import com.ajeet.slotalarmclock.R
@@ -97,35 +98,41 @@ class SlotClockWidgetProvider : AppWidgetProvider() {
         val widthDp = if (maxWidth > 0) (minWidth + maxWidth) / 2 else minWidth
         val heightDp = if (maxHeight > 0) (minHeight + maxHeight) / 2 else minHeight
 
-        val store = AlarmStore.get(context)
-        val alarm = store.state.value
+        val alarm = AlarmStore.get(context).state.value
         val now = LocalTime.now()
 
+        val plateWidth = (widthDp * density).toInt()
+        val plateHeight = (heightDp * density).toInt()
+        val switchWidth = (SWITCH_WIDTH_DP * density).toInt()
+        val switchHeight = (SWITCH_HEIGHT_DP * density).toInt()
+
         val views = RemoteViews(context.packageName, R.layout.widget_slot_clock)
-        views.setImageViewBitmap(
-            R.id.widget_plate,
-            WidgetRenderer.renderPlate(
-                context = context,
-                widthPx = (widthDp * density).toInt(),
-                heightPx = (heightDp * density).toInt(),
-                hour = now.hour,
-                minute = now.minute,
-                alarm = alarm,
-            ),
-        )
-        views.setImageViewBitmap(
-            R.id.widget_switch,
-            WidgetRenderer.renderSwitch(
-                context = context,
-                widthPx = (SWITCH_WIDTH_DP * density).toInt(),
-                heightPx = (SWITCH_HEIGHT_DP * density).toInt(),
-                enabled = alarm.enabled,
-            ),
-        )
+
+        // A render failure must never leave the user staring at an empty frame: the full
+        // material degrades to a plain face that still reports the time.
+        val plate = runCatching {
+            WidgetRenderer.renderPlate(context, plateWidth, plateHeight, now.hour, now.minute, alarm)
+        }.getOrElse { error ->
+            Log.e(TAG, "Plate render failed; falling back to the plain face", error)
+            WidgetRenderer.renderPlain(context, plateWidth, plateHeight, now.hour, now.minute)
+        }
+        views.setImageViewBitmap(R.id.widget_plate, plate)
+
+        runCatching {
+            WidgetRenderer.renderSwitch(context, switchWidth, switchHeight, alarm.enabled)
+        }.onSuccess { switch ->
+            views.setImageViewBitmap(R.id.widget_switch, switch)
+        }.onFailure { error ->
+            Log.e(TAG, "Switch render failed", error)
+        }
+
         views.setOnClickPendingIntent(R.id.widget_plate, openApp(context))
         views.setOnClickPendingIntent(R.id.widget_switch, toggleAlarm(context))
 
-        manager.updateAppWidget(widgetId, views)
+        // Binder can still refuse an oversized payload. Logging and moving on beats crash-looping
+        // the provider, which would leave every widget blank on every future update too.
+        runCatching { manager.updateAppWidget(widgetId, views) }
+            .onFailure { error -> Log.e(TAG, "updateAppWidget failed for widget $widgetId", error) }
     }
 
     // ----------------------------------------------------------------------------- scheduling
@@ -186,6 +193,7 @@ class SlotClockWidgetProvider : AppWidgetProvider() {
         const val ACTION_TOGGLE = "com.ajeet.slotalarmclock.action.TOGGLE_ALARM"
         const val ACTION_TICK = "com.ajeet.slotalarmclock.action.REFRESH_WIDGET"
 
+        private const val TAG = "SlotClockWidget"
         private const val TOGGLE_REQUEST = 0x5A11
         private const val TICK_REQUEST = 0x5A12
         private const val MINUTE_MILLIS = 60_000L

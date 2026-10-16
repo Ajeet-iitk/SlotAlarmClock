@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backstop behind the widget's two bitmaps.
+
+  The plate bitmap is inset from the edges and rounded at the corners, so those corners are
+  transparent by design. That is fine while the bitmap arrives — but if an update is ever
+  dropped, a fully transparent layout is indistinguishable from "the widget is broken", and the
+  user is left staring at a blank hole in their home screen. A dark rounded panel means the
+  widget always has a visible, deliberate footprint; the metal simply sits on top of it.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FF14181E" />
+    <corners android:radius="22dp" />
+</shape>
