@@ -5,11 +5,14 @@
 # It runs automatically every time the project is pushed, and can also
 # be run by hand from the repository's "Actions" tab.
 #
-# Action versions are pinned deliberately:
-#   * all of them target Node 24, so no Node 20 deprecation warnings;
-#   * ubuntu-24.04 is pinned rather than ubuntu-latest, because the
-#     "latest" label migrates to Ubuntu 26 on 2026-10-19 and an
-#     unpinned runner can break a build with no change to this file.
+# NOTE on the setup steps: GitHub's Ubuntu 24.04 runner image already
+# ships JDK 17, the Android SDK (ANDROID_HOME=/usr/local/lib/android/sdk),
+# platform android-36 and build-tools 36.0.0. There is deliberately NO
+# "install the Android SDK" action here — adding one is both redundant
+# and, as it turned out, the exact thing that was breaking this build.
+#
+# The runner label is pinned to ubuntu-24.04 rather than ubuntu-latest
+# because "latest" migrates to Ubuntu 26 on 2026-10-19.
 name: Build debug APK
 
 on:
@@ -33,17 +36,30 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Install the Android SDK tools
-        uses: android-actions/setup-android@v4
-
-      - name: Install the API 36 platform and build tools
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
-
-      - name: Make the Gradle wrapper runnable
-        run: chmod +x ./gradlew
-
       - name: Build the debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        # The compiler output is teed to build.log so that, when the build
+        # fails, the interesting lines can be re-emitted as annotations.
+        # Annotations are readable through the API, which is what keeps the
+        # diagnosis loop short.
+        run: |
+          chmod +x ./gradlew
+          set +e
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::group::Compiler errors"
+            grep -E "^e: |^w: |What went wrong|> Task .*FAILED|Could not (resolve|find|determine|download)|Unresolved reference" build.log \
+              | head -40 \
+              | while IFS= read -r line; do
+                  echo "::error title=build::$line"
+                done
+            echo "::endgroup::"
+          fi
+          exit "$status"
+
+      - name: List the built APK
+        run: ls -lh app/build/outputs/apk/debug/
 
       - name: Publish the APK for download
         uses: actions/upload-artifact@v7
