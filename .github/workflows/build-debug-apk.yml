@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Builds a ready-to-install debug APK on GitHub's servers, so the
 # machine you are sitting at never needs Java, the Android SDK or
 # Android Studio installed.
@@ -13,6 +14,8 @@
 #
 # The runner label is pinned to ubuntu-24.04 rather than ubuntu-latest
 # because "latest" migrates to Ubuntu 26 on 2026-10-19.
+=======
+>>>>>>> b7b5bef63df9d6f6a6f50f6b85b35583795db28e
 name: Build debug APK
 
 on:
@@ -37,6 +40,7 @@ jobs:
           java-version: "17"
 
       - name: Build the debug APK
+<<<<<<< HEAD
         # The compiler output is teed to build.log so that, when the build
         # fails, the interesting lines can be re-emitted as annotations.
         # Annotations are readable through the API, which is what keeps the
@@ -57,6 +61,11 @@ jobs:
             echo "::endgroup::"
           fi
           exit "$status"
+=======
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+>>>>>>> b7b5bef63df9d6f6a6f50f6b85b35583795db28e
 
       - name: List the built APK
         run: ls -lh app/build/outputs/apk/debug/
@@ -64,7 +73,6 @@ jobs:
       - name: Publish the APK for download
         uses: actions/upload-artifact@v7
         with:
-          # The downloaded file is named after this.
           name: slot-alarm-clock-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
