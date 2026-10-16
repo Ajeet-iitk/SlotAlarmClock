@@ -1,9 +1,3 @@
-# Builds a ready-to-install debug APK on GitHub's servers, so the
-# machine you are sitting at never needs Java, the Android SDK or
-# Android Studio installed.
-#
-# It runs automatically every time the project is pushed, and can also
-# be run by hand from the repository's "Actions" tab.
 name: Build debug APK
 
 on:
@@ -14,35 +8,30 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
       - name: Check out the project
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Install the Android SDK tools
-        uses: android-actions/setup-android@v3
-
-      - name: Install the API 36 platform and build tools
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
-
-      - name: Make the Gradle wrapper runnable
-        run: chmod +x ./gradlew
-
       - name: Build the debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: List the built APK
+        run: ls -lh app/build/outputs/apk/debug/
 
       - name: Publish the APK for download
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          # The downloaded file is named after this.
           name: slot-alarm-clock-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
