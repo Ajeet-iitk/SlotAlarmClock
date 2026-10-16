@@ -9,11 +9,8 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
-import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.graphics.Typeface
-import android.os.Build
-import androidx.annotation.RequiresApi
 import kotlin.math.abs
 
 /**
@@ -25,16 +22,17 @@ import kotlin.math.abs
  *  1. the home-screen widget has to render the identical look into a [Bitmap];
  *  2. keeping the material in one place means the app and the widget can never drift apart.
  *
- * The material is built in two tiers:
+ * The material is a multi-stop chrome ramp — two blown-out highlights split by a dark band —
+ * with a fine anisotropic brushing pass laid over it, all baked into a texture [Bitmap] and
+ * wrapped in a [BitmapShader].
  *
- *  * **Android 13+** — a procedural AGSL shader bakes anisotropic brushed steel, complete
- *    with a specular sheen, into a texture bitmap.
- *  * **Android 8–12** — a hand-tuned multi-stop chrome ramp. Same silhouette, softer grain.
- *
- * Either way the result is wrapped in a [BitmapShader]. That detail matters: it means the
- * mutable [RuntimeShader] is *never* handed to a recording canvas, so per-frame uniform
- * writes can't leak between draws. All animation (the specular sweep) is a cheap,
- * immutable gradient overlay painted on top of the baked material.
+ * That baking step is the reason there is no `RuntimeShader` here any more, and it is worth
+ * spelling out because the code spent a while trying: a `RuntimeShader` may only be drawn to a
+ * **hardware** canvas, and a bitmap's canvas is always a **software** one. Baking is not
+ * optional — it is what lets one renderer serve the widget — so an AGSL tier could never have
+ * worked; on Android 13+ it threw `IllegalArgumentException: Software rendering doesn't support
+ * RuntimeShader` on the very first frame. The grain is drawn with real 1px strokes instead,
+ * which costs nothing, works on every API level, and looks the same in the widget.
  */
 object Metal {
 
@@ -68,88 +66,34 @@ object Metal {
     val labelTypeface: Typeface =
         Typeface.create("sans-serif-medium", Typeface.NORMAL) ?: Typeface.DEFAULT_BOLD
 
-    // ------------------------------------------------------------------- procedural material
-
-    private const val AGSL_BRUSHED = """
-        uniform float2 uSize;
-        uniform float  uTime;
-        uniform float  uGrain;
-        uniform float  uWarm;
-
-        half4 main(float2 fragCoord) {
-            float2 uv = fragCoord / max(uSize, float2(1.0));
-            float  y  = clamp(uv.y, 0.0, 1.0);
-
-            float3 dark = float3(0.078, 0.088, 0.103);
-            float3 mid  = float3(0.400, 0.428, 0.470);
-            float3 lite = float3(0.930, 0.950, 0.972);
-
-            // Chrome ramp: two blown-out highlights split by a dark band.
-            float3 col = dark;
-            col = mix(col, mid,  smoothstep(0.00, 0.16, y));
-            col = mix(col, lite, smoothstep(0.16, 0.27, y));
-            col = mix(col, mid,  smoothstep(0.27, 0.44, y));
-            col = mix(col, dark, smoothstep(0.44, 0.52, y));
-            col = mix(col, mid,  smoothstep(0.52, 0.62, y));
-            col = mix(col, lite, smoothstep(0.62, 0.72, y));
-            col = mix(col, mid,  smoothstep(0.72, 0.87, y));
-            col = mix(col, dark, smoothstep(0.87, 1.00, y));
-
-            // Anisotropic brushing: two octaves of fine, near-horizontal micro-facets.
-            float n = fract(sin(fragCoord.y * 127.1 + fragCoord.x * 0.37) * 43758.5453);
-            float m = fract(sin(fragCoord.y * 311.7 + fragCoord.x * 0.11 + 17.0) * 24634.6345);
-            col *= 1.0 + uGrain * ((n - 0.5) * 0.100 + (m - 0.5) * 0.050);
-
-            // Broad sheen so the plate never reads as a flat ramp.
-            float d = y - (0.5 + 0.34 * sin(uTime * 0.55));
-            col += float3(0.80, 0.86, 0.98) * exp(-d * d * 46.0) * 0.085;
-
-            col = mix(col, col * float3(1.14, 1.00, 0.80), uWarm);
-            return half4(clamp(col, float3(0.0), float3(1.0)), 1.0);
-        }
-    """
+    // ------------------------------------------------------------------------------- brushing
 
     /**
-     * Every Android 13+ reference lives in here — including the *signatures*.
+     * Brushed anisotropic grain, painted straight onto the baked ramp.
      *
-     * That is the whole point of the object. On Android 8–12 `android.graphics.RuntimeShader`
-     * does not exist, and if any field or method of [Metal] named the type, loading [Metal]
-     * could fail with NoClassDefFoundError on exactly the devices that are supposed to fall
-     * back to the gradient ramp. Nothing outside this object ever mentions it: the shader is
-     * handed around as a plain [Shader], and its uniforms are written in here.
+     * One hairline per pixel row, each with a deterministic alpha, so the surface reads as
+     * machined rather than printed. The seed is fixed rather than random because the same region
+     * is re-baked whenever a plate resizes, and the grain must not crawl when it does.
      */
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    private object Brushed {
-        fun create(): Shader = RuntimeShader(AGSL_BRUSHED)
+    private fun drawBrushing(canvas: Canvas, w: Float, h: Float, warm: Boolean) {
+        val stroke = Paint()
+        stroke.strokeWidth = 1f
+        stroke.color = if (warm) 0xFFF4EDDA.toInt() else 0xFFF2F6FB.toInt()
 
-        fun configure(shader: Shader, w: Int, h: Int, warm: Boolean) {
-            val runtime = shader as RuntimeShader
-            runtime.setFloatUniform("uSize", w.toFloat(), h.toFloat())
-            runtime.setFloatUniform("uTime", 0f)
-            runtime.setFloatUniform("uGrain", 1f)
-            runtime.setFloatUniform("uWarm", if (warm) 1f else 0f)
+        var seed = BRUSH_SEED
+        var y = 0f
+        while (y < h) {
+            seed = seed * 1_103_515_245 + 12_345
+            val noise = ((seed ushr 16) and 0x7FFF) / 32_767f
+            // Fine enough to be felt rather than seen: 2-12 out of 255.
+            stroke.alpha = (2f + noise * 10f).toInt().coerceIn(2, 12)
+            canvas.drawLine(0f, y, w, y, stroke)
+            y += 1f
         }
     }
 
-    private var brushed: Shader? = null
-    private var brushedFailed = false
-
-    private fun brushedShader(): Shader? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
-        if (brushedFailed) return null
-        brushed?.let { return it }
-        return try {
-            Brushed.create().also { brushed = it }
-        } catch (_: Throwable) {
-            // A driver that rejects AGSL falls back to the gradient ramp forever.
-            brushedFailed = true
-            null
-        }
-    }
-
-    /** True when the procedural shader is driving the material. Surfaced in the UI footer. */
-    val usingProceduralMaterial: Boolean
-        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !brushedFailed
+    /** Arbitrary but fixed, so re-baking a size reproduces the same grain. */
+    private const val BRUSH_SEED = 0x5F3A7C19
 
     // ------------------------------------------------------------------------- texture cache
 
@@ -178,13 +122,8 @@ object Metal {
 
         val bitmap = Bitmap.createBitmap(key.w, key.h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        val shader = brushedShader()
-        if (shader != null) {
-            Brushed.configure(shader, key.w, key.h, warm)
-            paint.shader = shader
-        } else {
-            paint.shader = ramp(
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = ramp(
                 colours = if (warm) BRASS_COLOURS else CHROME_COLOURS,
                 offsets = CHROME_OFFSETS,
                 top = 0f,
@@ -192,6 +131,9 @@ object Metal {
             )
         }
         canvas.drawRect(0f, 0f, key.w.toFloat(), key.h.toFloat(), paint)
+
+        // The ramp gives the shape of the light; the brushing gives it a direction.
+        drawBrushing(canvas, key.w.toFloat(), key.h.toFloat(), warm)
 
         val wrapped = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
         if (key.dx != 0 || key.dy != 0) {

@@ -26,6 +26,7 @@ object CrashLog {
     private const val PREFS = "slot_alarm_diagnostics"
     private const val KEY_STAGE = "stage"
     private const val KEY_CRASH = "crash"
+    private const val KEY_CRASH_BUILD = "crash_build"
     private const val MAX_CHARS = 8000
 
     @Volatile
@@ -75,7 +76,10 @@ object CrashLog {
             appendLine()
             append(Log.getStackTraceString(error))
         }
-        prefs(app).edit().putString(KEY_CRASH, report.take(MAX_CHARS)).commit()
+        prefs(app).edit()
+            .putString(KEY_CRASH, report.take(MAX_CHARS))
+            .putString(KEY_CRASH_BUILD, version(app))
+            .commit()
     }
 
     /** A one-line description short enough to retype from a phone screen. */
@@ -94,14 +98,28 @@ object CrashLog {
         }
     }
 
-    /** The stored crash report, or null when the previous run ended cleanly. */
-    fun readCrash(context: Context): String? = prefs(context).getString(KEY_CRASH, null)
+    /**
+     * The stored crash report, or null when there is nothing to report for *this* build.
+     *
+     * A report is only meaningful to the build that produced it. Installing a new APK therefore
+     * starts from a clean slate — otherwise the screen for an old, already-fixed crash would sit
+     * in front of the clock and hide the fix.
+     */
+    fun readCrash(context: Context): String? {
+        val app = context.applicationContext
+        val stored = prefs(app).getString(KEY_CRASH, null) ?: return null
+        if (prefs(app).getString(KEY_CRASH_BUILD, null) != version(app)) {
+            clear(app)
+            return null
+        }
+        return stored
+    }
 
     /** Where the most recent run got to. */
     fun readStage(context: Context): String? = prefs(context).getString(KEY_STAGE, null)
 
     fun clear(context: Context) {
-        prefs(context).edit().remove(KEY_CRASH).commit()
+        prefs(context).edit().remove(KEY_CRASH).remove(KEY_CRASH_BUILD).commit()
     }
 
     private fun prefs(context: Context) =

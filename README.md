@@ -3,7 +3,7 @@
 A 24-hour alarm clock for Android, styled as a machined metal slot machine.
 
 Four independent dials roll like a fruit machine's reels — with real motion blur and a sprung
-mechanical overshoot when they land — over a procedural brushed-steel plate. A metal rocker
+mechanical overshoot when they land — over a brushed-chrome plate. A metal rocker
 switch arms the alarm. The same clock is available as a home-screen widget.
 
 ---
@@ -104,36 +104,49 @@ The hour reel can therefore never spin its way to 27. Combinations that would st
 
 This is the part worth reading, because it is where the interesting engineering is.
 
-### One material, two tiers
+### One material, one tier
 
 `ui/metal/Metal.kt` is the only place that knows what "metal" looks like, and it paints onto a
 plain `android.graphics.Canvas` — not a Compose `DrawScope`. That is deliberate: the widget has
 to render the identical material into a `Bitmap`, and one shared renderer means the app and the
 widget can never drift apart.
 
-| Tier | Devices | Technique |
-|---|---|---|
-| Procedural | Android 13+ (API 33) | An **AGSL `RuntimeShader`** bakes anisotropic brushed steel — two octaves of fine micro-facets, a chrome ramp, and a broad sheen — into a texture bitmap. |
-| Fallback | Android 8–12 | A hand-tuned twelve-stop chrome ramp. Same silhouette, softer grain. |
+The material is a hand-tuned twelve-stop chrome ramp — two blown-out highlights split by a dark
+band — with a fine **anisotropic brushing pass** laid over it: one hairline per pixel row, each
+with a deterministic alpha, so the surface reads as machined rather than printed. All of it is
+baked once per size into a texture `Bitmap` and wrapped in a `BitmapShader`.
 
-The app's footer tells you which tier is live on your device.
+### Why there is no `RuntimeShader`
 
-### Why the shader is baked, not drawn live
+Earlier versions tried to upgrade the grain to an AGSL `RuntimeShader` on Android 13+. It cannot
+work, and the reason is worth writing down.
 
-The tempting design is to hand the `RuntimeShader` straight to a `Paint` and animate its `uTime`
-uniform. It is also subtly broken.
+A `RuntimeShader` may only be drawn to a **hardware-accelerated** canvas. A bitmap's canvas is
+**always software**. Baking into a bitmap is not optional — it is the thing that lets one renderer
+serve the widget, and it is what makes the material immutable — so the AGSL tier was always being
+drawn onto a software canvas, and it threw:
 
-Compose records draw commands into a display list and may replay them later. A `RuntimeShader` is
-*mutable* state referenced by the paint, so a uniform written for one draw could leak into an
-earlier recorded op. Writing a fresh shader per frame is the other option, but that means
-recompiling AGSL 60 times a second.
+```
+java.lang.IllegalArgumentException: Software rendering doesn't support RuntimeShader
+    at android.graphics.BaseCanvas.throwIfHasHwFeaturesInSwMode(BaseCanvas.java:1089)
+```
 
-So the shader runs **once per size**, into a `Bitmap`, which is then wrapped in a `BitmapShader`.
-That is immutable, shareable, and free to replay. Verified by construction rather than by luck.
+That is a hard crash on the app's first frame *and* inside every widget update, on every device
+from Android 13 up. On Android 8–12 the same code took the gradient branch and worked, which is
+why the fault looked like "the widget is blank" rather than "the renderer is broken". The AGSL
+shader was replaced by twenty lines of real 1-pixel strokes: no cost, rasterises everywhere, and
+identical in the widget.
+
+### Why the material is baked, and why nothing mutable is drawn
 
 All per-frame motion — the specular sweep gliding across the plates — is a cheap, immutable
-`LinearGradient` overlay painted on top. The shader supplies the *material*; the overlay supplies
-the *movement*.
+`LinearGradient` overlay painted on top of the baked material. The bitmap supplies the *material*;
+the overlay supplies the *movement*.
+
+That split matters because Compose records draw commands into a display list and may replay them
+later. A mutable shader referenced by a paint could leak one frame's uniform into an earlier
+recorded op. Every shader this app hands to a canvas is therefore either a `BitmapShader` of baked
+pixels or a freshly-built gradient: replayable by construction, not by luck.
 
 ### Slot-machine feel
 
@@ -227,7 +240,7 @@ app/src/main/java/com/ajeet/slotalarmclock/
 ├── MainActivity.kt                 Clock screen host; permission requests; crash screen
 ├── RingActivity.kt                 Lock-screen ringing screen; self-closes
 ├── ui/
-│   ├── metal/Metal.kt              ★ The entire material: AGSL, ramps, plates, engraving
+│   ├── metal/Metal.kt              ★ The entire material: ramps, brushing, plates, engraving
 │   ├── SlotReel.kt                 ★ Reel model, easing, shared strip renderer, component
 │   ├── MetalToggle.kt              The rocker switch
 │   ├── SlotAlarmClockScreen.kt     Clock face, two modes, dial assembly

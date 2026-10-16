@@ -163,7 +163,7 @@ fun SlotAlarmClockScreen(
 
             Spacer(Modifier.height(16.dp))
             EngravedLabel(
-                text = if (Metal.usingProceduralMaterial) "AGSL BRUSHED METAL" else "CHROME GRADIENT",
+                text = "BRUSHED CHROME",
                 sizeDp = 9.dp,
                 letterSpacing = 0.26f,
                 accent = accent,
