@@ -85,7 +85,7 @@ class AlarmRingingService : Service() {
                         setAudioAttributes(
                             AudioAttributes.Builder()
                                 .setUsage(AudioAttributes.USAGE_ALARM)
-                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIC)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                                 .build(),
                         )
                         setWakeMode(this@AlarmRingingService, PowerManager.PARTIAL_WAKE_LOCK)
