@@ -23,6 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -247,7 +248,12 @@ fun SlotReel(
                     val dy = change.position.y - lastY
                     lastY = change.position.y
                     change.consume()
-                    position.snapTo(position.value - dy / digitHeight)
+                    // snapTo is a suspending call, and this gesture block runs inside a
+                    // restricted suspension scope (AwaitPointerEventScope), where only that
+                    // scope's own suspend functions may be called. Handing the work to the
+                    // composition's scope keeps the drag identical while compiling legally.
+                    val delta = dy / digitHeight
+                    scope.launch { position.snapTo(position.value - delta) }
 
                     val tick = floor(position.value).toInt()
                     if (tick != lastTick) {
