@@ -4,6 +4,12 @@
 #
 # It runs automatically every time the project is pushed, and can also
 # be run by hand from the repository's "Actions" tab.
+#
+# Action versions are pinned deliberately:
+#   * all of them target Node 24, so no Node 20 deprecation warnings;
+#   * ubuntu-24.04 is pinned rather than ubuntu-latest, because the
+#     "latest" label migrates to Ubuntu 26 on 2026-10-19 and an
+#     unpinned runner can break a build with no change to this file.
 name: Build debug APK
 
 on:
@@ -14,21 +20,21 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
       - name: Check out the project
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Install the Android SDK tools
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install the API 36 platform and build tools
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
@@ -40,7 +46,7 @@ jobs:
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: Publish the APK for download
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # The downloaded file is named after this.
           name: slot-alarm-clock-apk
