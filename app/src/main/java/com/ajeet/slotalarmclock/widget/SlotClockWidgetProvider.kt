@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.RemoteViews
+import com.ajeet.slotalarmclock.CrashLog
 import com.ajeet.slotalarmclock.MainActivity
 import com.ajeet.slotalarmclock.R
 import com.ajeet.slotalarmclock.alarm.AlarmScheduler
@@ -85,54 +86,116 @@ class SlotClockWidgetProvider : AppWidgetProvider() {
         ids.forEach { updateWidget(context, manager, it) }
     }
 
+    /**
+     * Renders and pushes one widget.
+     *
+     * Structured in two layers on purpose. [buildViews] is the real material, and it shares the
+     * palette, the reel renderer and the alarm state with the app — which means it inherits
+     * every fault the app can have. [plainViews] shares none of that: if the renderer cannot
+     * even be loaded, the widget still shows the time and the reason. Between them the widget
+     * has no way to end up as an empty frame.
+     */
     private fun updateWidget(context: Context, manager: AppWidgetManager, widgetId: Int) {
+        val views: RemoteViews? = try {
+            buildViews(context, manager, widgetId)
+        } catch (error: Throwable) {
+            Log.e(TAG, "Widget build failed; using the plain face", error)
+            try {
+                plainViews(context, manager, widgetId, CrashLog.summary(error))
+            } catch (fallback: Throwable) {
+                Log.e(TAG, "Plain face failed too", fallback)
+                null
+            }
+        }
+
+        if (views == null) return
+
+        // Binder can still refuse an oversized payload. Logging and moving on beats crash-looping
+        // the provider, which would leave every widget blank on every future update too.
+        runCatching { manager.updateAppWidget(widgetId, views) }
+            .onFailure { error -> Log.e(TAG, "updateAppWidget failed for widget $widgetId", error) }
+    }
+
+    /** The full metal face. Depends on the shared renderer, and so can fail with it. */
+    private fun buildViews(context: Context, manager: AppWidgetManager, widgetId: Int): RemoteViews {
+        val density = context.resources.displayMetrics.density
+        val (plateWidth, plateHeight) = widgetSizePx(context, manager, widgetId)
+        val now = LocalTime.now()
+        val alarm = AlarmStore.get(context).state.value
+
+        val views = RemoteViews(context.packageName, R.layout.widget_slot_clock)
+        views.setImageViewBitmap(
+            R.id.widget_plate,
+            WidgetRenderer.renderPlate(context, plateWidth, plateHeight, now.hour, now.minute, alarm),
+        )
+        runCatching {
+            WidgetRenderer.renderSwitch(
+                context,
+                (SWITCH_WIDTH_DP * density).toInt(),
+                (SWITCH_HEIGHT_DP * density).toInt(),
+                alarm.enabled,
+            )
+        }.onSuccess { switch ->
+            views.setImageViewBitmap(R.id.widget_switch, switch)
+        }.onFailure { error ->
+            Log.e(TAG, "Switch render failed", error)
+        }
+        views.setOnClickPendingIntent(R.id.widget_plate, openApp(context))
+        views.setOnClickPendingIntent(R.id.widget_switch, toggleAlarm(context))
+        return views
+    }
+
+    /**
+     * The last resort: a time, a reason, and working taps.
+     *
+     * It uses no shared material, no shared typeface and no shared state, because any of those
+     * is a candidate for being the thing that just failed.
+     */
+    private fun plainViews(
+        context: Context,
+        manager: AppWidgetManager,
+        widgetId: Int,
+        fault: String?,
+    ): RemoteViews {
+        val size = runCatching { widgetSizePx(context, manager, widgetId) }
+            .getOrElse { defaultSizePx(context) }
+        val now = LocalTime.now()
+
+        val views = RemoteViews(context.packageName, R.layout.widget_slot_clock)
+        views.setImageViewBitmap(
+            R.id.widget_plate,
+            WidgetRenderer.renderPlain(context, size.first, size.second, now.hour, now.minute, fault),
+        )
+        if (fault != null) {
+            // Also park it in the app's diagnostic store, so opening the app explains the fault
+            // even though the widget itself survived it.
+            CrashLog.mark(context, "widget render fault: $fault")
+        }
+        views.setOnClickPendingIntent(R.id.widget_plate, openApp(context))
+        views.setOnClickPendingIntent(R.id.widget_switch, toggleAlarm(context))
+        return views
+    }
+
+    /** Renders at the midpoint of the cell's possible range: never stretched, never wasted. */
+    private fun widgetSizePx(
+        context: Context,
+        manager: AppWidgetManager,
+        widgetId: Int,
+    ): Pair<Int, Int> {
         val options = manager.getAppWidgetOptions(widgetId)
         val density = context.resources.displayMetrics.density
-
-        // Render at the midpoint of the possible range so the bitmap is neither stretched on a
-        // small widget nor wasted on a large one.
         val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, DEFAULT_WIDTH_DP)
         val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, DEFAULT_HEIGHT_DP)
         val maxWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 0)
         val maxHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0)
         val widthDp = if (maxWidth > 0) (minWidth + maxWidth) / 2 else minWidth
         val heightDp = if (maxHeight > 0) (minHeight + maxHeight) / 2 else minHeight
+        return (widthDp * density).toInt() to (heightDp * density).toInt()
+    }
 
-        val alarm = AlarmStore.get(context).state.value
-        val now = LocalTime.now()
-
-        val plateWidth = (widthDp * density).toInt()
-        val plateHeight = (heightDp * density).toInt()
-        val switchWidth = (SWITCH_WIDTH_DP * density).toInt()
-        val switchHeight = (SWITCH_HEIGHT_DP * density).toInt()
-
-        val views = RemoteViews(context.packageName, R.layout.widget_slot_clock)
-
-        // A render failure must never leave the user staring at an empty frame: the full
-        // material degrades to a plain face that still reports the time.
-        val plate = runCatching {
-            WidgetRenderer.renderPlate(context, plateWidth, plateHeight, now.hour, now.minute, alarm)
-        }.getOrElse { error ->
-            Log.e(TAG, "Plate render failed; falling back to the plain face", error)
-            WidgetRenderer.renderPlain(context, plateWidth, plateHeight, now.hour, now.minute)
-        }
-        views.setImageViewBitmap(R.id.widget_plate, plate)
-
-        runCatching {
-            WidgetRenderer.renderSwitch(context, switchWidth, switchHeight, alarm.enabled)
-        }.onSuccess { switch ->
-            views.setImageViewBitmap(R.id.widget_switch, switch)
-        }.onFailure { error ->
-            Log.e(TAG, "Switch render failed", error)
-        }
-
-        views.setOnClickPendingIntent(R.id.widget_plate, openApp(context))
-        views.setOnClickPendingIntent(R.id.widget_switch, toggleAlarm(context))
-
-        // Binder can still refuse an oversized payload. Logging and moving on beats crash-looping
-        // the provider, which would leave every widget blank on every future update too.
-        runCatching { manager.updateAppWidget(widgetId, views) }
-            .onFailure { error -> Log.e(TAG, "updateAppWidget failed for widget $widgetId", error) }
+    private fun defaultSizePx(context: Context): Pair<Int, Int> {
+        val density = context.resources.displayMetrics.density
+        return (DEFAULT_WIDTH_DP * density).toInt() to (DEFAULT_HEIGHT_DP * density).toInt()
     }
 
     // ----------------------------------------------------------------------------- scheduling

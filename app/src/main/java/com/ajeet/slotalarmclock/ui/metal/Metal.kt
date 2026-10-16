@@ -109,16 +109,32 @@ object Metal {
         }
     """
 
-    /** Isolated so the class is only ever resolved on Android 13+. */
+    /**
+     * Every Android 13+ reference lives in here — including the *signatures*.
+     *
+     * That is the whole point of the object. On Android 8–12 `android.graphics.RuntimeShader`
+     * does not exist, and if any field or method of [Metal] named the type, loading [Metal]
+     * could fail with NoClassDefFoundError on exactly the devices that are supposed to fall
+     * back to the gradient ramp. Nothing outside this object ever mentions it: the shader is
+     * handed around as a plain [Shader], and its uniforms are written in here.
+     */
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private object Brushed {
-        fun create(): RuntimeShader = RuntimeShader(AGSL_BRUSHED)
+        fun create(): Shader = RuntimeShader(AGSL_BRUSHED)
+
+        fun configure(shader: Shader, w: Int, h: Int, warm: Boolean) {
+            val runtime = shader as RuntimeShader
+            runtime.setFloatUniform("uSize", w.toFloat(), h.toFloat())
+            runtime.setFloatUniform("uTime", 0f)
+            runtime.setFloatUniform("uGrain", 1f)
+            runtime.setFloatUniform("uWarm", if (warm) 1f else 0f)
+        }
     }
 
-    private var brushed: RuntimeShader? = null
+    private var brushed: Shader? = null
     private var brushedFailed = false
 
-    private fun brushedShader(): RuntimeShader? {
+    private fun brushedShader(): Shader? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
         if (brushedFailed) return null
         brushed?.let { return it }
@@ -165,10 +181,7 @@ object Metal {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         val shader = brushedShader()
         if (shader != null) {
-            shader.setFloatUniform("uSize", key.w.toFloat(), key.h.toFloat())
-            shader.setFloatUniform("uTime", 0f)
-            shader.setFloatUniform("uGrain", 1f)
-            shader.setFloatUniform("uWarm", if (warm) 1f else 0f)
+            Brushed.configure(shader, key.w, key.h, warm)
             paint.shader = shader
         } else {
             paint.shader = ramp(

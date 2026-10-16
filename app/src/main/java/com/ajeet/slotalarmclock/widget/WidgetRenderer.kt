@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Typeface
 import com.ajeet.slotalarmclock.data.AlarmState
 import com.ajeet.slotalarmclock.ui.HourOnesSpec
 import com.ajeet.slotalarmclock.ui.HourTensSpec
@@ -41,7 +42,10 @@ object WidgetRenderer {
      */
     private const val MAX_PLATE_PIXELS = 60_000
     private const val MAX_SWITCH_PIXELS = 24_000
-    private const val MAX_PLAIN_PIXELS = 12_000
+    private const val MAX_PLAIN_PIXELS = 24_000
+
+    /** Literal copy of [Metal.AMBER] — the fallback must not load [Metal] to find it. */
+    private const val PLAIN_AMBER = 0xFFFFB74D.toInt()
 
     /** Renders the plate: case, reels and status line. Archived as a still frame of the clock. */
     fun renderPlate(
@@ -118,10 +122,21 @@ object WidgetRenderer {
      *
      * Used only when the full material render throws. It exists so that a renderer fault
      * degrades into "the widget still tells you the time" rather than "the widget is a blank
-     * box", and it doubles as a diagnostic — if this is what shows up, the bitmaps *are*
-     * reaching the launcher and the fault is inside the material renderer.
+     * box", and it doubles as a diagnostic: [fault] is the reason, drawn underneath, so the
+     * widget itself can report what went wrong on a device that has no debugger attached.
+     *
+     * Note what it does *not* touch: no [Metal], no shared typeface, no `AlarmStore`. A fallback
+     * that leaned on any of those would fail for exactly the same reason the thing it is
+     * standing in for failed.
      */
-    fun renderPlain(context: Context, widthPx: Int, heightPx: Int, hour: Int, minute: Int): Bitmap {
+    fun renderPlain(
+        context: Context,
+        widthPx: Int,
+        heightPx: Int,
+        hour: Int,
+        minute: Int,
+        fault: String? = null,
+    ): Bitmap {
         val (w, h) = fit(widthPx, heightPx, MAX_PLAIN_PIXELS)
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -131,15 +146,34 @@ object WidgetRenderer {
         val radius = 18f * density
         canvas.drawRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), radius, radius, background)
 
-        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Metal.AMBER
+        val time = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = PLAIN_AMBER
             textSize = h * 0.36f
             textAlign = Paint.Align.CENTER
-            typeface = Metal.digitTypeface
+            typeface = Typeface.DEFAULT_BOLD
         }
         val label = String.format(Locale.US, "%02d:%02d", hour, minute)
-        canvas.drawText(label, w / 2f, Metal.centredBaseline(text, h / 2f), text)
+
+        if (fault == null) {
+            canvas.drawText(label, w / 2f, baselineOf(time, h / 2f), time)
+            return bitmap
+        }
+
+        canvas.drawText(label, w / 2f, baselineOf(time, h * 0.38f), time)
+
+        val note = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFE4695B.toInt()
+            textSize = (h * 0.12f).coerceAtLeast(9f)
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText(fault.take(52), w / 2f, baselineOf(note, h * 0.76f), note)
         return bitmap
+    }
+
+    /** Vertically centres [paint]'s text on [centreY]. Deliberately local — see [renderPlain]. */
+    private fun baselineOf(paint: Paint, centreY: Float): Float {
+        val metrics = paint.fontMetrics
+        return centreY - (metrics.ascent + metrics.descent) / 2f
     }
 
     // ------------------------------------------------------------------------------- internals

@@ -200,11 +200,31 @@ same `Metal` and the exact same `drawReelStrip` the app uses.
 
 ---
 
+## If it crashes on the phone
+
+There is no `adb` on the machine that builds this, so a fault has to explain itself from the
+phone alone. Two things exist for that:
+
+* `SlotAlarmApp` installs a last-chance exception handler before anything else runs, and every
+  startup milestone is written to `SharedPreferences` as a breadcrumb. So a fault that is too
+  early to catch still leaves a trail of how far the process got.
+* `MainActivity` checks for a stored report **before** it touches Compose. If there is one, it
+  paints it with a plain `TextView` — no custom theme, no Compose — because the fault is most
+  likely somewhere in that stack, and the report has to survive it. Tapping the report clears it
+  and reloads the clock.
+
+The widget uses the same idea: if a bitmap render throws, it draws the time *and* the one-line
+reason into the widget rather than leaving an empty box.
+
+---
+
 ## Layout
 
 ```
 app/src/main/java/com/ajeet/slotalarmclock/
-├── MainActivity.kt                 Clock screen host; permission requests
+├── SlotAlarmApp.kt                 Installs the crash reporter, first breadcrumb
+├── CrashLog.kt                     Breadcrumbs + last-crash report (SharedPreferences)
+├── MainActivity.kt                 Clock screen host; permission requests; crash screen
 ├── RingActivity.kt                 Lock-screen ringing screen; self-closes
 ├── ui/
 │   ├── metal/Metal.kt              ★ The entire material: AGSL, ramps, plates, engraving

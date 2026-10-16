@@ -4,10 +4,13 @@ import android.Manifest
 import android.app.AlarmManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.ScrollView
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -30,18 +33,71 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        CrashLog.mark(this, "MainActivity.onCreate")
 
-        val store = AlarmStore.get(this)
+        // The previous run died. Report it rather than walking straight back into the code that
+        // killed it — otherwise the app just crash-loops and the reason is never visible.
+        CrashLog.readCrash(this)?.let { report ->
+            showReport(report)
+            return
+        }
 
-        setContent {
-            SlotAlarmTheme {
-                SlotAlarmClockScreen(
-                    store = store,
-                    onAlarmArmed = ::onAlarmArmed,
-                )
+        try {
+            enableEdgeToEdge()
+
+            val store = AlarmStore.get(this)
+            CrashLog.mark(this, "MainActivity.storeReady")
+
+            setContent {
+                SlotAlarmTheme {
+                    SlotAlarmClockScreen(
+                        store = store,
+                        onAlarmArmed = ::onAlarmArmed,
+                    )
+                }
+            }
+            CrashLog.mark(this, "MainActivity.composed")
+        } catch (error: Throwable) {
+            // A fault while building the first frame. Record it and show it now, so the user
+            // does not have to relaunch to find out what happened.
+            CrashLog.record(this, error)
+            showReport(CrashLog.readCrash(this) ?: CrashLog.summary(error))
+        }
+    }
+
+    /**
+     * Renders a crash report using nothing but platform widgets.
+     *
+     * Deliberately no Compose, no XML layout and no custom theme: whatever the fault is, it is
+     * most likely *in* that stack, and the report has to survive it.
+     */
+    private fun showReport(report: String) {
+        val body = TextView(this).apply {
+            typeface = Typeface.MONOSPACE
+            textSize = 11f
+            setTextIsSelectable(true)
+            setPadding(32, 48, 32, 48)
+            setTextColor(0xFFE6EBF2.toInt())
+            text = buildString {
+                appendLine("SLOT ALARM — DIAGNOSTICS")
+                appendLine()
+                append(report)
+                appendLine()
+                appendLine()
+                appendLine("Tap anywhere to clear this and reload the clock.")
             }
         }
+
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(0xFF0C0E12.toInt())
+            addView(body)
+            setOnClickListener {
+                CrashLog.clear(this@MainActivity)
+                recreate()
+            }
+        }
+
+        setContentView(scroll)
     }
 
     /** Everything that must be true before an alarm can be relied on. */
